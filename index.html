@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="石川県の水揚げデータと豊洲の統計から強さを決めた、魚のカードゲーム。FISH×TECH 2026 Chattso-GPT">
+<title>セリバトル</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: 夜明け前のセリ場。上が相手の場、中央に「月の暦」と氷、下が自分の場と手札。濃紺の単一テーマ */
+:root{
+  --bg:#0e1b2b; --floor:#14263a; --line:#2a4361; --ink:#eef3f8; --mute:#9fb2c6;
+  --ice:#8fd3f4; --gold:#f2c14e; --red:#ef6b5b; --ok:#5fd39a; --card:#fbfaf6; --cardink:#1b1b1b;
+  --fd:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Noto Sans JP",sans-serif;
+  --fb:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:14px;
+  padding-block:10px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+button{font-family:var(--fd);cursor:pointer}
+button:focus-visible,.cardui:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.app{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font-family:var(--fd);font-weight:900;font-size:24px;margin:0;letter-spacing:.04em}
+h1 small{font-size:12px;color:var(--mute);font-weight:500;margin-left:8px;letter-spacing:0}
+.btn{background:var(--line);color:var(--ink);border:0;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px}
+.btn.primary{background:var(--gold);color:#2a1d00}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn:disabled{opacity:.4;cursor:default}
+.side{background:var(--floor);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.side.me{border-color:#3a6a94}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.who{font-family:var(--fd);font-weight:700;font-size:15px}
+.score{font-family:var(--fd);font-size:22px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+.score small{font-size:12px;color:var(--mute);font-weight:500}
+.chip{font-size:12px;color:var(--mute);background:rgba(255,255,255,.05);border-radius:20px;padding:2px 10px}
+.board{display:flex;gap:8px;min-height:150px;align-items:flex-end;flex-wrap:wrap;padding:6px;border-radius:10px;background:rgba(0,0,0,.18)}
+.board.empty::after{content:"（場にカードはありません）";color:var(--mute);font-size:12px;margin:auto}
+.hand{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px}
+.mid{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between}
+.months{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;flex:1;min-width:260px}
+.m{text-align:center;font-size:11px;padding:4px 0;border-radius:6px;background:rgba(255,255,255,.05);color:var(--mute);font-variant-numeric:tabular-nums}
+.m.past{opacity:.45}
+.m.now{background:var(--gold);color:#2a1d00;font-weight:700}
+.ice{display:flex;align-items:center;gap:6px;font-family:var(--fd);font-weight:700}
+.ice i{width:16px;height:16px;border-radius:4px;background:rgba(143,211,244,.18);border:1px solid var(--ice);display:inline-block;transform:rotate(45deg)}
+.ice i.on{background:var(--ice)}
+.status{font-size:13px;color:var(--ink);background:rgba(242,193,78,.1);border-left:3px solid var(--gold);padding:6px 10px;border-radius:6px;min-height:34px}
+/* カード */
+.cardui{width:118px;flex:0 0 auto;background:var(--card);color:var(--cardink);border-radius:10px;border:4px solid var(--c);padding:5px 6px 6px;position:relative;
+  display:flex;flex-direction:column;gap:3px;transition:transform .15s,box-shadow .15s;text-align:left}
+.cardui.big{width:150px}
+.cardui .nm{font-family:var(--fd);font-weight:900;font-size:13.5px;display:flex;align-items:center;gap:4px}
+.cardui .cs{width:21px;height:21px;border-radius:50%;background:var(--ice);color:#06324a;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex:0 0 auto}
+.cardui .cs.down{background:var(--ok);color:#06331f}
+.cardui .art{height:44px;background:linear-gradient(#eaf3fa,#d7e8f4);border-radius:5px}
+.cardui .sk{font-size:9.6px;line-height:1.35;color:#333;min-height:39px}
+.cardui .sk b{color:var(--c)}
+.cardui .st{display:flex;gap:3px}
+.cardui .st span{flex:1;background:var(--c);color:#fff;border-radius:5px;font-size:9.5px;display:flex;justify-content:space-between;align-items:center;padding:1px 5px}
+.cardui .st b{font-size:15px;font-family:var(--fd)}
+.cardui.play{cursor:pointer}
+.cardui.play:hover{transform:translateY(-4px);box-shadow:0 6px 14px rgba(0,0,0,.4)}
+.cardui.cant{opacity:.5}
+.cardui.sel{transform:translateY(-6px);box-shadow:0 0 0 3px var(--gold)}
+.cardui.target{cursor:pointer;box-shadow:0 0 0 3px var(--red)}
+.cardui.sleep::after{content:"準備中";position:absolute;top:4px;right:4px;font-size:9px;background:#555;color:#fff;border-radius:4px;padding:0 4px}
+.cardui.done{filter:grayscale(.7);opacity:.75}
+.cardui.done::after{content:"行動ずみ";position:absolute;top:4px;right:4px;font-size:9px;background:#555;color:#fff;border-radius:4px;padding:0 4px}
+.back{width:44px;height:60px;border-radius:7px;background:repeating-linear-gradient(45deg,#24496d 0 6px,#1d3b59 6px 12px);border:2px solid #3a6a94}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.log{font-size:12px;color:var(--mute);max-height:110px;overflow:auto;background:rgba(0,0,0,.2);border-radius:8px;padding:6px 10px;line-height:1.6}
+.log b{color:var(--ink)}
+.overlay{position:fixed;inset:0;background:rgba(5,12,20,.82);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.panel{background:var(--floor);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;padding:20px;display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow:auto}
+.panel h2{font-family:var(--fd);margin:0;font-size:22px}
+.panel ol{margin:0;padding-left:20px;line-height:1.7;font-size:13.5px}
+.panel p{margin:0;line-height:1.7;color:var(--mute);font-size:13px}
+.goalbox{background:rgba(242,193,78,.14);border:1px solid var(--gold);border-radius:10px;padding:10px 12px;line-height:1.6}.goalbox b{color:var(--gold);font-family:var(--fd);font-size:17px}
+.big-result{font-family:var(--fd);font-size:30px;font-weight:900;color:var(--gold)}
+@media (max-width:600px){.cardui{width:104px}.cardui .sk{font-size:9px}h1{font-size:20px}}
+@media (prefers-reduced-motion:reduce){.cardui{transition:none}}
+</style>
+</head>
+<body>
+
+
+<div class="app">
+  <header>
+    <h1>セリバトル<small>いしかわの海 カードゲーム 第1弾</small></h1>
+    <div class="actions">
+      <button class="btn ghost" id="btnRules">あそびかた</button>
+      <button class="btn ghost" id="btnNew">はじめから</button>
+    </div>
+  </header>
+
+  <section class="side" id="oppSide" aria-label="相手">
+    <div class="row"><span class="who" id="oppName">相手（CPU）</span><span class="score" id="oppScore">0<small> 点</small></span>
+      <span class="chip" id="oppInfo"></span><div class="row" id="oppHand"></div></div>
+    <div class="board" id="oppBoard"></div>
+  </section>
+
+  <div class="mid">
+    <div class="months" id="months" aria-label="月"></div>
+    <div class="ice" id="ice" aria-label="氷"></div>
+  </div>
+  <div class="status" id="status" role="status"></div>
+
+  <section class="side me" aria-label="自分">
+    <div class="board" id="myBoard"></div>
+    <div class="row"><span class="who" id="myName">あなた</span><span class="score" id="myScore">0<small> 点</small></span><span class="chip" id="myInfo"></span>
+      <div class="actions" style="margin-left:auto">
+        <button class="btn" id="btnShip" disabled>売る</button>
+        <button class="btn primary" id="btnEnd">番を終える</button>
+      </div></div>
+    <div class="hand" id="myHand" aria-label="手札"></div>
+  </section>
+
+  <div class="log" id="log" aria-label="記録"></div>
+</div>
+
+<div class="overlay" id="startPanel">
+  <div class="panel">
+    <h2>セリバトル</h2>
+    <p>石川県の水揚げデータと豊洲の統計（2025年）から強さを決めた、魚のカードゲームです。</p>
+    <div class="goalbox"><b>勝ち方：魚を売って、先に20点</b><br>12月が終わったら、点の多いほうの勝ち</div>
+    <p style="color:var(--ink);font-weight:700">自分の番にやること</p>
+    <ol>
+      <li><b>1枚引いて、氷をもらう</b>（1番目の番に1個、2番目に2個…最大5個）</li>
+      <li><b>氷を払って、手札の魚を場に出す</b>。カード左上の数字が必要な氷。旬の月は1個安い（緑の数字）</li>
+      <li><b>前の番から場にいる魚を、1匹ずつ動かす</b>。魚を押してから選ぶ<br>
+        ・<b>売る</b>：「売る力」ぶんの点。相手の場の魚1匹につき−1点（最低1点）<br>
+        ・<b>競る</b>：赤枠の相手の魚を押す。売る力が相手の「量」以上なら相手の魚を外せる。相手の売る力が自分の量以上なら自分も外れる</li>
+      <li>「番を終える」を押す。2人とも終えたら1か月進む</li>
+    </ol>
+    <div class="actions">
+      <button class="btn primary" id="btnCpu">CPUと対戦</button>
+      <button class="btn" id="btnTwo">2人で対戦（交代で操作）</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="endPanel" hidden>
+  <div class="panel" style="align-items:center;text-align:center">
+    <div class="big-result" id="resultText"></div>
+    <p id="resultSub"></p>
+    <button class="btn primary" id="btnAgain">もう一度</button>
+  </div>
+</div>
+
+<div class="overlay" id="passPanel" hidden>
+  <div class="panel" style="align-items:center;text-align:center">
+    <h2 id="passText"></h2>
+    <p>相手に画面を見せないようにして、渡してください。</p>
+    <button class="btn primary" id="btnPass">はじめる</button>
+  </div>
+</div>
+
+<script>
+const CARDS = {"ノドグロ": {"type": "魚", "color": "#d0453a", "star": 5, "cost": 5, "atk": 6, "hp": 1, "u": 4921, "t": 83, "rank": 11, "toyo": null, "mshare": [4, 5, 9, 7, 12, 12, 7, 6, 17, 14, 5, 2], "skill": "少数精鋭", "text": "相手の場に魚が並んでいても、売れる点が減らない。", "fact": "量は一番少なく、浜値は一番高い。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <path d=\"M41.25 55 Q 110 17 168.75 55 Q 110 89 41.25 55 Z\" fill=\"#f6c7c0\"/> <path d=\"M41.25 55 Q 110 17 168.75 55 Q 110 47 41.25 55 Z\" fill=\"#d23c35\"/> <path d=\"M164.75 55 L 205 28 L 196 55 L 205 82 Z\" fill=\"#d23c35\"/> <circle cx=\"59.25\" cy=\"50\" r=\"6\" fill=\"#fff\"/><circle cx=\"58.25\" cy=\"50\" r=\"3.2\" fill=\"#111\"/> <circle cx=\"62\" cy=\"50\" r=\"9\" fill=\"#fff\"/><circle cx=\"61\" cy=\"50\" r=\"5\" fill=\"#111\"/></svg>"}, "加能ガニ": {"type": "カニ", "color": "#d0453a", "star": 5, "cost": 5, "atk": 6, "hp": 2, "u": 4104, "t": 310, "rank": 3, "toyo": 2150, "mshare": [13, 12, 9, 0, 0, 0, 0, 0, 0, 0, 43, 23], "skill": "輝", "text": "4月〜10月は出せない（禁漁）。売ると+3点。", "fact": "最上級「輝」は初セリで1尾450万円。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <g stroke=\"#d0453a\" stroke-width=\"6\" stroke-linecap=\"round\" fill=\"none\"> <path d=\"M70 60 L35 45 L15 70\"/><path d=\"M72 68 L40 72 L22 95\"/><path d=\"M75 75 L50 92 L45 105\"/> <path d=\"M150 60 L185 45 L205 70\"/><path d=\"M148 68 L180 72 L198 95\"/><path d=\"M145 75 L170 92 L175 105\"/> <path d=\"M85 45 L70 22\"/><path d=\"M135 45 L150 22\"/></g> <ellipse cx=\"110\" cy=\"62\" rx=\"45\" ry=\"30\" fill=\"#e2573f\"/> <circle cx=\"66\" cy=\"18\" r=\"9\" fill=\"#e2573f\"/><circle cx=\"154\" cy=\"18\" r=\"9\" fill=\"#e2573f\"/> <circle cx=\"100\" cy=\"42\" r=\"4\" fill=\"#111\"/><circle cx=\"120\" cy=\"42\" r=\"4\" fill=\"#111\"/> <g fill=\"#f2a08f\"><circle cx=\"95\" cy=\"62\" r=\"3\"/><circle cx=\"110\" cy=\"70\" r=\"3\"/><circle cx=\"125\" cy=\"60\" r=\"3\"/></g></svg>"}, "甘エビ": {"type": "エビ", "color": "#e0607e", "star": 4, "cost": 4, "atk": 5, "hp": 3, "u": 1697, "t": 548, "rank": 6, "toyo": 3182, "mshare": [9, 5, 7, 10, 14, 18, 7, 1, 12, 12, 2, 4], "skill": "豊洲シェア", "text": "売るたびに、山札から1枚引く。8月は出せない。", "fact": "豊洲の甘エビの約6分の1が石川産。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <g fill=\"#f08a8a\"><path d=\"M40 70 Q60 20 120 25 Q170 30 175 60 Q150 50 120 52 Q80 56 70 80 Z\"/> <path d=\"M70 80 L50 98 L78 92 Z\"/></g> <g stroke=\"#e06a6a\" stroke-width=\"3\" fill=\"none\"><path d=\"M95 30 Q100 45 95 56\"/><path d=\"M118 26 Q122 40 118 53\"/><path d=\"M140 30 Q144 42 140 54\"/></g> <g stroke=\"#f08a8a\" stroke-width=\"2\" fill=\"none\"><path d=\"M172 45 Q200 20 215 10\"/><path d=\"M172 50 Q205 40 218 36\"/></g> <circle cx=\"165\" cy=\"45\" r=\"4\" fill=\"#111\"/></svg>"}, "スルメイカ": {"type": "イカ", "color": "#6250d6", "star": 4, "cost": 4, "atk": 5, "hp": 3, "u": 1195, "t": 1296, "rank": 1, "toyo": 1230, "mshare": [6, 3, 4, 3, 4, 15, 15, 10, 14, 10, 6, 9], "skill": "まぼろし", "text": "自分の場に1枚までしか出せない。売ると+2点。", "fact": "2020年9,152t→2025年1,296t。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <path d=\"M20 55 L60 30 L160 40 Q175 55 160 70 L60 80 Z\" fill=\"#e9a07a\"/> <path d=\"M20 55 L45 35 L45 75 Z\" fill=\"#d98a63\"/> <circle cx=\"150\" cy=\"50\" r=\"6\" fill=\"#fff\"/><circle cx=\"151\" cy=\"50\" r=\"3\" fill=\"#111\"/> <g stroke=\"#e9a07a\" stroke-width=\"5\" fill=\"none\" stroke-linecap=\"round\"> <path d=\"M165 48 Q190 40 205 30\"/><path d=\"M168 54 Q195 52 210 48\"/><path d=\"M168 60 Q195 64 210 70\"/><path d=\"M165 66 Q190 74 203 86\"/></g></svg>"}, "ブリ": {"type": "魚", "color": "#2a78d6", "star": 4, "cost": 4, "atk": 5, "hp": 3, "u": 1034, "t": 1380, "rank": 2, "toyo": 1266, "mshare": [12, 5, 8, 6, 11, 16, 6, 3, 4, 8, 6, 16], "skill": "寒ブリ", "text": "12月・1月・2月は、売る力+3。", "fact": "1kgの浜値は6月約200円、12月約1,600円。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <path d=\"M30.0 55 Q 110 17 180.0 55 Q 110 89 30.0 55 Z\" fill=\"#dfe6ea\"/> <path d=\"M30.0 55 Q 110 17 180.0 55 Q 110 47 30.0 55 Z\" fill=\"#2f5f8a\"/> <path d=\"M176.0 55 L 205 28 L 196 55 L 205 82 Z\" fill=\"#2f5f8a\"/> <circle cx=\"48.0\" cy=\"50\" r=\"6\" fill=\"#fff\"/><circle cx=\"47.0\" cy=\"50\" r=\"3.2\" fill=\"#111\"/> <path d=\"M45 57 L180 57\" stroke=\"#e8c33a\" stroke-width=\"4\"/></svg>"}, "サワラ": {"type": "魚", "color": "#2a78d6", "star": 3, "cost": 3, "atk": 4, "hp": 3, "u": 872, "t": 975, "rank": 7, "toyo": 1511, "mshare": [4, 1, 2, 12, 12, 6, 12, 4, 9, 18, 14, 7], "skill": "新顔", "text": "出したターンから売る・競るができる。", "fact": "2000年ごろから日本海で急に増えた。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <path d=\"M22.5 55 Q 110 17 187.5 55 Q 110 89 22.5 55 Z\" fill=\"#e9edf0\"/> <path d=\"M22.5 55 Q 110 17 187.5 55 Q 110 47 22.5 55 Z\" fill=\"#5a7690\"/> <path d=\"M183.5 55 L 205 28 L 196 55 L 205 82 Z\" fill=\"#5a7690\"/> <circle cx=\"40.5\" cy=\"50\" r=\"6\" fill=\"#fff\"/><circle cx=\"39.5\" cy=\"50\" r=\"3.2\" fill=\"#111\"/> <circle cx=\"55\" cy=\"46\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"70\" cy=\"51\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"85\" cy=\"46\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"100\" cy=\"51\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"115\" cy=\"46\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"130\" cy=\"51\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"145\" cy=\"46\" r=\"2.4\" fill=\"#2f4256\"/><circle cx=\"160\" cy=\"51\" r=\"2.4\" fill=\"#2f4256\"/></svg>"}, "マサバ": {"type": "魚", "color": "#2a78d6", "star": 2, "cost": 2, "atk": 3, "hp": 5, "u": 101, "t": 10036, "rank": 4, "toyo": 391, "mshare": [2, 4, 7, 6, 9, 21, 18, 8, 11, 8, 4, 1], "skill": "群れ", "text": "場のほかの自分のマイワシ・マサバ1枚につき、売る力+1。", "fact": "県内で2番目に多く揚がる魚。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <path d=\"M37.5 55 Q 110 17 172.5 55 Q 110 89 37.5 55 Z\" fill=\"#eef0f0\"/> <path d=\"M37.5 55 Q 110 17 172.5 55 Q 110 47 37.5 55 Z\" fill=\"#2e7f6e\"/> <path d=\"M168.5 55 L 205 28 L 196 55 L 205 82 Z\" fill=\"#2e7f6e\"/> <circle cx=\"55.5\" cy=\"50\" r=\"6\" fill=\"#fff\"/><circle cx=\"54.5\" cy=\"50\" r=\"3.2\" fill=\"#111\"/> <path d=\"M60 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/><path d=\"M76 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/><path d=\"M92 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/><path d=\"M108 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/><path d=\"M124 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/><path d=\"M140 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/><path d=\"M156 40 q6 8 0 14\" stroke=\"#16443b\" stroke-width=\"2.5\" fill=\"none\"/></svg>"}, "マイワシ": {"type": "魚", "color": "#2a78d6", "star": 1, "cost": 1, "atk": 2, "hp": 5, "u": 48, "t": 19441, "rank": 5, "toyo": 544, "mshare": [0, 24, 38, 18, 6, 4, 7, 2, 0, 0, 0, 0], "skill": "大漁", "text": "場に出たとき、手札のマイワシかマサバを1枚、氷を払わずに出せる。", "fact": "2005年260t→2025年1.9万t。浜値は5分の1に。", "art": "<svg viewBox=\"0 0 220 110\" width=\"100%\" height=\"100%\"> <path d=\"M48.75 55 Q 110 17 161.25 55 Q 110 89 48.75 55 Z\" fill=\"#e7ecf0\"/> <path d=\"M48.75 55 Q 110 17 161.25 55 Q 110 47 48.75 55 Z\" fill=\"#3d6fa3\"/> <path d=\"M157.25 55 L 205 28 L 196 55 L 205 82 Z\" fill=\"#3d6fa3\"/> <circle cx=\"66.75\" cy=\"50\" r=\"6\" fill=\"#fff\"/><circle cx=\"65.75\" cy=\"50\" r=\"3.2\" fill=\"#111\"/> <circle cx=\"70\" cy=\"58\" r=\"2.6\" fill=\"#223\"/><circle cx=\"84\" cy=\"58\" r=\"2.6\" fill=\"#223\"/><circle cx=\"98\" cy=\"58\" r=\"2.6\" fill=\"#223\"/><circle cx=\"112\" cy=\"58\" r=\"2.6\" fill=\"#223\"/><circle cx=\"126\" cy=\"58\" r=\"2.6\" fill=\"#223\"/><circle cx=\"140\" cy=\"58\" r=\"2.6\" fill=\"#223\"/></svg>"}};
+const ORDER = Object.keys(CARDS);
+const GOAL = 20, MAXICE = 5, MAXBOARD = 4;
+const MN = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+let S = null;            // ゲームの状態
+let sel = null;          // 選んでいる自分の場のカード（uid）
+let uidSeq = 1;
+
+const $ = id => document.getElementById(id);
+const shuffle = a => { for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+const mk = name => ({ uid: uidSeq++, name, ready: false, acted: false });
+
+function newGame(mode){
+  uidSeq = 1;
+  const p = who => ({ who, deck: shuffle(ORDER.map(mk)), hand: [], board: [], score: 0, turns: 0, ice: 0 });
+  S = { mode, month: 0, cur: 0, half: 0, over: false, log: [], players: [p(0), p(1)] };
+  S.players.forEach(pl => { for (let i=0;i<3;i++) draw(pl, true); });
+  S.cur = Math.random() < .5 ? 0 : 1;
+  addLog(`${pname(S.cur)}が先に始めます。`);
+  startTurn();
+}
+
+function pname(i){ if (S.mode==='cpu') return i===0 ? 'あなた' : 'CPU'; return i===0 ? 'プレイヤー1' : 'プレイヤー2'; }
+function addLog(t){ S.log.unshift(`<b>${MN[S.month]}</b> ${t}`); S.log = S.log.slice(0,60); }
+function draw(pl, quiet){ const c = pl.deck.shift(); if (c){ pl.hand.push(c); if(!quiet && (S.mode!=='cpu' || pl.who===0)) addLog(`${pname(pl.who)}は「${c.name}」を引いた。`); } }
+
+const inSeason = (name, m) => CARDS[name].mshare[m] >= 10;
+function costOf(name){ const c = CARDS[name]; return Math.max(1, c.cost - (inSeason(name, S.month) ? 1 : 0)); }
+function playBlock(pl, name){
+  if (name==='加能ガニ' && S.month>=3 && S.month<=9) return '4〜10月は禁漁のため出せません';
+  if (name==='甘エビ' && S.month===7) return '8月は出せません';
+  if (name==='スルメイカ' && pl.board.some(b=>b.name==='スルメイカ')) return 'スルメイカは場に1枚まで';
+  if (pl.board.length >= MAXBOARD) return `場は${MAXBOARD}枚まで`;
+  return null;
+}
+function power(pl, card){
+  let p = CARDS[card.name].atk;
+  if (card.name==='マサバ') p += pl.board.filter(b=>b.uid!==card.uid && (b.name==='マイワシ'||b.name==='マサバ')).length;
+  if (card.name==='ブリ' && (S.month===11 || S.month<=1)) p += 3;
+  return p;
+}
+const life = card => CARDS[card.name].hp;
+function shipPts(pl, op, c){ let p = power(pl, c); if (c.name==='スルメイカ') p += 2; if (c.name==='加能ガニ') p += 3; if (c.name!=='ノドグロ') p -= op.board.length; return Math.max(1, p); }
+const canAct = c => (c.ready || c.name==='サワラ') && !c.acted;
+
+function startTurn(){
+  if (S.over) return;
+  const pl = S.players[S.cur];
+  pl.turns++;
+  pl.ice = Math.min(pl.turns, MAXICE);
+  pl.board.forEach(c => { c.acted = false; });
+  draw(pl);
+  sel = null;
+  if (S.mode==='two'){ $('passText').textContent = `${pname(S.cur)}の番です`; $('passPanel').hidden = false; }
+  render();
+  if (S.mode==='cpu' && S.cur===1) setTimeout(cpuTurn, 700);
+}
+
+function endTurn(){
+  if (S.over) return;
+  const pl = S.players[S.cur];
+  pl.board.forEach(c => { c.ready = true; });
+  S.half++;
+  if (S.half % 2 === 0){
+    if (S.month === 11){ finish(); return; }
+    S.month++;
+    addLog(`${MN[S.month]}になった。`);
+  }
+  S.cur = 1 - S.cur;
+  startTurn();
+}
+
+function playCard(pi, uid){
+  const pl = S.players[pi]; const idx = pl.hand.findIndex(c=>c.uid===uid); if (idx<0) return false;
+  const c = pl.hand[idx]; const cost = costOf(c.name);
+  if (playBlock(pl, c.name) || cost > pl.ice) return false;
+  pl.ice -= cost; pl.hand.splice(idx,1); c.ready = false; c.acted = false; pl.board.push(c);
+  addLog(`${pname(pi)}は「${c.name}」を出した（氷${cost}）。`);
+  if (c.name==='マイワシ'){
+    const j = pl.hand.findIndex(h => (h.name==='マサバ'||h.name==='マイワシ') && !playBlock(pl,h.name));
+    if (j>=0){ const f = pl.hand.splice(j,1)[0]; f.ready=false; pl.board.push(f); addLog(`大漁！「${f.name}」も氷なしで出た。`); }
+  }
+  return true;
+}
+
+function ship(pi, uid){
+  const pl = S.players[pi], op = S.players[1-pi]; const c = pl.board.find(b=>b.uid===uid);
+  if (!c || !canAct(c)) return false;
+  let pts = shipPts(pl, op, c);
+  pl.score += pts; c.acted = true;
+  addLog(`${pname(pi)}の「${c.name}」を売って <b>${pts}点</b>。`);
+  if (c.name==='甘エビ') draw(pl);
+  checkWin();
+  return true;
+}
+
+function clash(pi, uid, tuid){
+  const pl = S.players[pi], op = S.players[1-pi];
+  const a = pl.board.find(b=>b.uid===uid), d = op.board.find(b=>b.uid===tuid);
+  if (!a || !d || !canAct(a)) return false;
+  a.acted = true;
+  const ap = power(pl, a), dp = power(op, d);
+  const dOut = ap >= life(d), aOut = dp >= life(a);
+  let t = `${pname(pi)}の「${a.name}」（売る力${ap}）が「${d.name}」（量${life(d)}）と競り合い。`;
+  if (dOut){ op.board = op.board.filter(b=>b.uid!==d.uid); t += `「${d.name}」は場から外れた。`; }
+  else t += `「${d.name}」は残った。`;
+  if (aOut){ pl.board = pl.board.filter(b=>b.uid!==a.uid); t += `「${a.name}」も外れた。`; }
+  addLog(t);
+  return true;
+}
+
+function checkWin(){
+  const w = S.players.find(p=>p.score>=GOAL);
+  if (w) finish();
+}
+function finish(){
+  S.over = true; render();
+  const [a,b] = S.players;
+  let txt, sub = `${pname(0)} ${a.score}点 ／ ${pname(1)} ${b.score}点`;
+  if (a.score===b.score) txt = '引き分け';
+  else { const w = a.score>b.score ? 0 : 1; txt = S.mode==='cpu' ? (w===0 ? 'あなたの勝ち！' : 'CPUの勝ち') : `${pname(w)}の勝ち！`; }
+  $('resultText').textContent = txt; $('resultSub').textContent = sub; $('endPanel').hidden = false;
+}
+
+/* ---- CPU ---- */
+function cpuTurn(){
+  if (S.over || S.cur!==1) return;
+  const me = S.players[1], op = S.players[0];
+  // 出せるカードを、コストの高い順に出す
+  let played = true;
+  while (played){
+    played = false;
+    const opts = me.hand.filter(c => !playBlock(me,c.name) && costOf(c.name)<=me.ice).sort((x,y)=>CARDS[y.name].cost-CARDS[x.name].cost);
+    if (opts.length){ playCard(1, opts[0].uid); played = true; }
+  }
+  // 行動：出荷できるなら出荷、できなければ有利な競り合い
+  const acts = me.board.filter(canAct).sort((x,y)=>power(me,y)-power(me,x));
+  for (const c of acts){
+    if (S.over) break;
+    if (!me.board.includes(c)) continue;
+    const ap = power(me,c);
+    const t = op.board.filter(d => ap >= life(d) && power(op,d) < life(c)).sort((x,y)=>CARDS[y.name].cost-CARDS[x.name].cost)[0];
+    if (t && c.name!=='ノドグロ' && (op.board.length>=2 || CARDS[t.name].cost>=3 || shipPts(me,op,c)<=2)) clash(1, c.uid, t.uid);
+    else ship(1, c.uid);
+  }
+  render();
+  if (!S.over) setTimeout(endTurn, 650);
+}
+
+/* ---- 表示 ---- */
+function cardHTML(name, opts={}){
+  const c = CARDS[name];
+  const cost = opts.cost ?? c.cost;
+  const pw = opts.power ?? c.atk;
+  return `<div class="cardui ${opts.cls||''}" style="--c:${c.color}" ${opts.attr||''}>
+    <div class="nm"><span class="cs ${cost<c.cost?'down':''}">${cost}</span>${name}</div>
+    <div class="art">${c.art}</div>
+    <div class="sk"><b>${c.skill}</b> ${c.text}</div>
+    <div class="st"><span>売る力<b>${pw}</b></span><span>量<b>${c.hp}</b></span></div>
+  </div>`;
+}
+
+function render(){
+  if (!S) return;
+  const human = S.mode==='cpu' ? 0 : S.cur;     // 下に表示するプレイヤー
+  const me = S.players[human], op = S.players[1-human];
+  const myTurn = !S.over && (S.mode==='two' || S.cur===0);
+  $('myName').textContent = pname(human); $('oppName').textContent = pname(1-human);
+  $('myScore').innerHTML = `${me.score}<small> / ${GOAL}点</small>`;
+  $('oppScore').innerHTML = `${op.score}<small> / ${GOAL}点</small>`;
+  $('myInfo').textContent = `山札 ${me.deck.length}枚`;
+  $('oppInfo').textContent = `山札 ${op.deck.length}枚・手札 ${op.hand.length}枚`;
+  $('oppHand').innerHTML = op.hand.map(()=>'<div class="back"></div>').join('');
+
+  $('months').innerHTML = MN.map((m,i)=>`<div class="m ${i<S.month?'past':''} ${i===S.month?'now':''}">${i+1}</div>`).join('');
+  const curP = S.players[S.cur];
+  $('ice').innerHTML = `氷 ${Array.from({length:MAXICE},(_,i)=>`<i class="${i<curP.ice?'on':''}"></i>`).join('')}`;
+  $('ice').setAttribute('aria-label', `${pname(S.cur)}の氷 ${curP.ice}`);
+
+  // 相手の場
+  const targeting = myTurn && sel && op.board.length;
+  $('oppBoard').innerHTML = op.board.map(c => cardHTML(c.name, { power: power(op,c), cls: targeting ? 'target' : '', attr: `data-t="${c.uid}" ${targeting?'tabindex="0" role="button"':''}` })).join('');
+  $('oppBoard').classList.toggle('empty', !op.board.length);
+
+  // 自分の場
+  $('myBoard').innerHTML = me.board.map(c => {
+    let cls = c.acted ? 'done' : (canAct(c) ? (myTurn?'play':'') : 'sleep');
+    if (sel===c.uid) cls += ' sel';
+    return cardHTML(c.name, { power: power(me,c), cls, attr: `data-b="${c.uid}" ${myTurn&&canAct(c)?'tabindex="0" role="button"':''}` });
+  }).join('');
+  $('myBoard').classList.toggle('empty', !me.board.length);
+
+  // 手札
+  $('myHand').innerHTML = me.hand.map(c => {
+    const block = playBlock(me, c.name); const cost = costOf(c.name);
+    const ok = myTurn && !block && cost<=me.ice;
+    return cardHTML(c.name, { cost, cls: (ok?'play big':'cant big'), attr: `data-h="${c.uid}" title="${block||(cost>me.ice?'氷が足りません':'クリックで場に出す')}" ${ok?'tabindex="0" role="button"':''}` });
+  }).join('') || '<span class="chip">手札はありません</span>';
+
+  // ボタンと案内
+  const sc = sel && me.board.find(b=>b.uid===sel);
+  $('btnShip').disabled = !(myTurn && sc);
+  $('btnShip').textContent = sc ? `売る（${shipPts(me,op,sc)}点）` : '売る';
+  $('btnEnd').disabled = !myTurn;
+  let st;
+  if (S.over) st = 'ゲーム終了';
+  else if (!myTurn) st = 'CPUが考えています…';
+  else if (sc) st = op.board.length ? `「${sc.name}」で「売る」か、競る相手の魚（赤枠）を押してください。相手の場の魚が多いほど、売れる点は減ります。` : `「${sc.name}」を売れます。「売る」を押してください。`;
+  else st = `${pname(human)}の番（${MN[S.month]}）：①手札を押して場に出す → ②場の魚を押して「売る」か「競る」→ ③「番を終える」。先に20点で勝ち。`;
+  $('status').textContent = st;
+  $('log').innerHTML = S.log.join('<br>');
+}
+
+/* ---- 操作 ---- */
+function humanIdx(){ return S.mode==='cpu' ? 0 : S.cur; }
+function myTurnNow(){ return S && !S.over && (S.mode==='two' || S.cur===0); }
+function onActivate(el){
+  if (!myTurnNow()) return;
+  const hi = humanIdx();
+  if (el.dataset.h){ if (playCard(hi, +el.dataset.h)) sel = null; render(); return; }
+  if (el.dataset.b){ const c = S.players[hi].board.find(b=>b.uid===+el.dataset.b); if (c && canAct(c)) sel = (sel===c.uid?null:c.uid); render(); return; }
+  if (el.dataset.t && sel){ clash(hi, sel, +el.dataset.t); sel = null; render(); return; }
+}
+document.addEventListener('click', e => { const el = e.target.closest('[data-h],[data-b],[data-t]'); if (el) onActivate(el); });
+document.addEventListener('keydown', e => { if ((e.key==='Enter'||e.key===' ') && e.target.matches('[data-h],[data-b],[data-t]')){ e.preventDefault(); onActivate(e.target); } });
+$('btnShip').onclick = () => { if (sel && ship(humanIdx(), sel)) { sel = null; render(); } };
+$('btnEnd').onclick = () => { if (myTurnNow()) endTurn(); };
+$('btnCpu').onclick = () => { $('startPanel').hidden = true; newGame('cpu'); };
+$('btnTwo').onclick = () => { $('startPanel').hidden = true; newGame('two'); };
+$('btnPass').onclick = () => { $('passPanel').hidden = true; };
+$('btnAgain').onclick = () => { $('endPanel').hidden = true; $('startPanel').hidden = false; };
+$('btnNew').onclick = () => { $('endPanel').hidden = true; $('passPanel').hidden = true; $('startPanel').hidden = false; };
+$('btnRules').onclick = () => { $('startPanel').hidden = false; };
+
+// 画面の更新後も対戦を続けられるようにする
+window.claude?.hot?.snapshot?.(() => ({ S, uidSeq }));
+function start(data){
+  if (data && data.S){ S = data.S; uidSeq = data.uidSeq || 1000; $('startPanel').hidden = true; render(); if (S.mode==='cpu' && S.cur===1 && !S.over) setTimeout(cpuTurn, 500); }
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+
+</body>
+</html>
