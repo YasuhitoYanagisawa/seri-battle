@@ -130,7 +130,7 @@ h1 small{font-size:12px;color:var(--mute);font-weight:500;margin-left:8px;letter
     <div class="goalbox"><b>勝ち方：魚を売って、先に20点</b><br>12月が終わったら、点の多いほうの勝ち</div>
     <p style="color:var(--ink);font-weight:700">自分の番にやること</p>
     <ol>
-      <li><b>1枚引いて、氷をもらう</b>（1番目の番に2個、2番目に3個…最大5個）</li>
+      <li><b>1枚引いて、氷をもらう</b>（1番目の番に2個、2番目に3個…最大5個）<br>※先攻は最初の番だけ引かない。後攻は最初の番だけ氷が1個多い（3個）</li>
       <li><b>氷を払って、手札の魚を場に出す</b>。カード左上の数字が必要な氷。旬の月は1個安い（緑の数字）</li>
       <li><b>前の番から場にいる魚を、1匹ずつ動かす</b>。魚を押してから選ぶ<br>
         ・<b>売る</b>：「売る力」ぶんの点。相手の場の魚1匹につき−1点（最低1点）<br>
@@ -185,9 +185,9 @@ function newGame(mode){
       if (j>=0){ const back = pl.hand.pop(); pl.hand.push(pl.deck.splice(j,1)[0]); pl.deck.push(back); shuffle(pl.deck); }
     }
   });
-  S.cur = Math.random() < .5 ? 0 : 1;
+  S.cur = Math.random() < .5 ? 0 : 1; S.first = S.cur;
   addLog(`${pname(S.cur)}が先に始めます。`);
-  if (S.mode==='cpu'){ $('passText').textContent = S.cur===0 ? 'あなたが先攻です' : 'CPUが先攻です'; $('passSub').textContent = S.cur===0 ? '手札から魚を出してください。出した魚は、次の番から売ったり競ったりできます。' : 'CPUの番が終わると、あなたの番になります。'; $('passPanel').hidden = false; S.waitStart = true; render(); return; }
+  if (S.mode==='cpu'){ $('passText').textContent = S.cur===0 ? 'あなたが先攻です' : 'CPUが先攻です'; $('passSub').textContent = S.cur===0 ? '先攻は、最初の番だけカードを引きません。手札から魚を出してください。出した魚は、次の番から売ったり競ったりできます。' : 'CPUの番が終わると、あなたの番です。後攻は、最初の番だけ氷が1個多くもらえます。'; $('passPanel').hidden = false; S.waitStart = true; render(); return; }
   startTurn();
 }
 
@@ -218,9 +218,11 @@ function startTurn(){
   if (S.over) return;
   const pl = S.players[S.cur];
   pl.turns++;
-  pl.ice = Math.min(pl.turns + 1, MAXICE);
+  // 先攻・後攻の差をならす：後攻は最初の番だけ氷+1、先攻は最初の番に引かない
+  const second = pl.who !== S.first;
+  pl.ice = Math.min(pl.turns + 1 + (second && pl.turns===1 ? 1 : 0), MAXICE);
   pl.board.forEach(c => { c.acted = false; });
-  draw(pl);
+  if (second || pl.turns > 1) draw(pl);
   sel = null;
   if (S.mode==='two'){ $('passText').textContent = `${pname(S.cur)}の番です`; $('passSub').textContent = '相手に画面を見せないようにして、渡してください。'; $('passPanel').hidden = false; }
   render();
